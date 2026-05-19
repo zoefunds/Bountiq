@@ -31,11 +31,15 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function bountyData(bountyId) {
+      return get(/databases/$(database)/documents/bounties/$(bountyId)).data;
+    }
+
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isSelf(uid)
         && request.resource.data.roles.hasOnly(['submitter']);
-      allow update: if isSelf(uid) && request.resource.data.roles == resource.data.roles
+      allow update: if (isSelf(uid) && request.resource.data.roles == resource.data.roles)
         || isAdmin();
       allow delete: if isAdmin();
     }
@@ -46,14 +50,21 @@ service cloud.firestore {
         && request.resource.data.creatorUid == request.auth.uid
         && request.resource.data.status in ['draft', 'open'];
       allow update: if (isSignedIn()
-          && resource.data.creatorUid == request.auth.uid
-          && resource.data.status in ['draft', 'open'])
-        || isAdmin();
+          && resource.data.creatorUid == request.auth.uid)
+        || isAdmin()
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submissionCount', 'updatedAt']));
       allow delete: if isAdmin();
     }
 
     match /submissions/{submissionId} {
-      allow read: if true;
+      allow read: if isSignedIn() && (
+        resource.data.submitterUid == request.auth.uid
+        || isJudge()
+        || isAdmin()
+        || bountyData(resource.data.bountyId).creatorUid == request.auth.uid
+        || bountyData(resource.data.bountyId).revealed == true
+      );
       allow create: if isSignedIn()
         && request.resource.data.submitterUid == request.auth.uid
         && request.resource.data.status == 'submitted';

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { siteConfig } from "@/config/site";
 
 export function Navbar() {
-  const { firebaseUser, appUser, signOutUser, loading } = useAuth();
+  const { firebaseUser, appUser, signOutUser, loading, hasRole } = useAuth();
 
   return (
     <header className="relative z-20 border-b border-ink/5 bg-canvas/80 backdrop-blur">
@@ -24,6 +24,9 @@ export function Navbar() {
           <Link href="/bounties" className="transition hover:text-ink">Bounties</Link>
           <Link href="/submissions" className="transition hover:text-ink">Submissions</Link>
           <Link href="/judge" className="transition hover:text-ink">Judging</Link>
+          {hasRole("admin") ? (
+            <Link href="/admin" className="transition hover:text-ink">Admin</Link>
+          ) : null}
         </nav>
 
         <div className="flex items-center gap-3">

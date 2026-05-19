@@ -2,10 +2,16 @@
 
 import * as React from "react";
 import { useParams } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { SubmissionForm } from "@/components/submission/SubmissionForm";
 import { SubmissionRow } from "@/components/submission/SubmissionRow";
-import { getBountyById } from "@/services/bountyService";
+import {
+  closeBountySubmissions,
+  getBountyById,
+  revealBountySubmissions,
+} from "@/services/bountyService";
 import { subscribeToBountySubmissions } from "@/services/submissionService";
+import { useAuth } from "@/hooks/useAuth";
 import type { Bounty, Submission } from "@/types";
 
 function fmt(d: Date) {
@@ -18,31 +24,29 @@ function fmt(d: Date) {
 export default function BountyDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
+  const { firebaseUser, appUser, hasRole } = useAuth();
 
   const [bounty, setBounty] = React.useState<Bounty | null>(null);
   const [submissions, setSubmissions] = React.useState<Submission[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [actionBusy, setActionBusy] = React.useState(false);
+
+  const refreshBounty = React.useCallback(async () => {
+    if (!id) return;
+    try {
+      const b = await getBountyById(id);
+      setBounty(b);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Load failed");
+    }
+  }, [id]);
 
   React.useEffect(() => {
     if (!id) return;
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const b = await getBountyById(id);
-        if (!cancelled) setBounty(b);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Load failed");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
+    setLoading(true);
+    refreshBounty().finally(() => setLoading(false));
+  }, [id, refreshBounty]);
 
   React.useEffect(() => {
     if (!id) return;
@@ -70,23 +74,80 @@ export default function BountyDetailPage() {
 
   const deadline =
     (bounty.deadline as unknown as { toDate: () => Date })?.toDate?.() ?? new Date();
+  const isCreator = firebaseUser?.uid === bounty.creatorUid;
+  const isPrivileged = isCreator || hasRole("judge") || hasRole("admin");
+  const myUid = firebaseUser?.uid;
 
-  const ranked = [...submissions].sort(
+  const visible = isPrivileged || bounty.revealed
+    ? submissions
+    : submissions.filter((s) => s.submitterUid === myUid);
+
+  const ranked = [...visible].sort(
     (a, b) => (b.score?.weighted ?? 0) - (a.score?.weighted ?? 0),
   );
+
+  async function handleClose() {
+    if (!firebaseUser) return;
+    setActionBusy(true);
+    try {
+      await closeBountySubmissions(firebaseUser.uid, bounty);
+      await refreshBounty();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Close failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleReveal() {
+    setActionBusy(true);
+    try {
+      await revealBountySubmissions(bounty);
+      await refreshBounty();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reveal failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
 
   return (
     <div className="container py-12">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-8">
           <header className="surface rounded-3xl p-8">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="rounded-full border border-ink/10 bg-canvas.soft px-3 py-1 text-xs font-medium uppercase tracking-wider text-ink/55">
-                {bounty.status}
-              </span>
-              <span className="font-mono text-xs text-ink/40">
-                On-chain id #{bounty.onChainBountyId ?? "—"}
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full border border-ink/10 bg-canvas.soft px-3 py-1 text-xs font-medium uppercase tracking-wider text-ink/55">
+                  {bounty.status}
+                </span>
+                <span className="font-mono text-xs text-ink/40">
+                  On-chain id #{bounty.onChainBountyId ?? "—"}
+                </span>
+                {bounty.revealed ? (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                    revealed
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-ink/10 bg-canvas.soft px-3 py-1 text-xs font-medium text-ink/55">
+                    sealed
+                  </span>
+                )}
+              </div>
+              {isCreator || hasRole("admin") ? (
+                <div className="flex items-center gap-2">
+                  {bounty.status === "open" ? (
+                    <Button size="sm" variant="outline" onClick={handleClose} loading={actionBusy}>
+                      Close submissions
+                    </Button>
+                  ) : null}
+                  {!bounty.revealed ? (
+                    <Button size="sm" onClick={handleReveal} loading={actionBusy}>
+                      Reveal submissions
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <h1 className="mt-4 font-display text-4xl font-semibold tracking-tight">
               {bounty.title}
@@ -107,13 +168,25 @@ export default function BountyDetailPage() {
                 Submissions
               </h2>
               <span className="text-xs text-ink/45">
-                {submissions.length} total
+                {bounty.submissionCount} total
               </span>
             </div>
+
+            {!isPrivileged && !bounty.revealed ? (
+              <div className="surface mt-4 rounded-2xl p-8 text-center">
+                <p className="font-display text-lg text-ink/70">Submissions are sealed.</p>
+                <p className="mt-2 text-sm text-ink/55">
+                  The bounty creator will reveal entries after the task closes. You can still see your own.
+                </p>
+              </div>
+            ) : null}
+
             <div className="mt-4 space-y-3">
               {ranked.length === 0 ? (
                 <div className="surface rounded-2xl p-8 text-center text-sm text-ink/55">
-                  No submissions yet. Be the first.
+                  {bounty.revealed || isPrivileged
+                    ? "No submissions yet."
+                    : "You have not submitted yet."}
                 </div>
               ) : (
                 ranked.map((s) => <SubmissionRow key={s.id} submission={s} />)
@@ -147,7 +220,7 @@ export default function BountyDetailPage() {
             </ul>
           </div>
 
-          <SubmissionForm bounty={bounty} />
+          {bounty.status === "open" ? <SubmissionForm bounty={bounty} /> : null}
         </aside>
       </div>
     </div>

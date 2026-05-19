@@ -41,6 +41,7 @@ export interface Bounty {
   status: BountyStatus;
   contractAddress: string | null;
   onChainBountyId: string | null;
+  revealed: boolean;
   submissionCount: number;
   deadline: Timestamp;
   createdAt: Timestamp;

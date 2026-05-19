@@ -77,10 +77,13 @@ export async function createSubmissionOnChainAndMirror(
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash: txHash });
-  const onChainSubmissionId = String(
-    receipt?.consensus_data?.leader_receipt?.result ?? "",
-  );
+  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+  const countValue = await client.readContract({
+    address,
+    functionName: "get_submission_count",
+    args: [],
+  });
+  const onChainSubmissionId = String(Number(countValue));
 
   const db = getFirebaseDb();
   const docRef = await addDoc(collection(db, SUBMISSIONS), {
@@ -145,7 +148,11 @@ export async function triggerEvaluation(
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash: txHash });
+  try {
+    await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+  } catch (waitErr) {
+    console.warn("evaluate_submission wait timed out, will read state anyway:", waitErr);
+  }
 
   const readClient = client;
   const raw = (await readClient.readContract({
@@ -154,28 +161,33 @@ export async function triggerEvaluation(
     args: [onChainSubmissionId],
   })) as string;
 
-  let parsed: { score?: Record<string, unknown>; status?: string; has_score?: boolean } = {};
+  let parsed: any = null;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    parsed = {};
+    console.warn("get_submission JSON parse failed, raw =", raw);
   }
 
-  if (parsed?.has_score && parsed?.score) {
+  const score = parsed?.score ?? null;
+  const hasScore = Boolean(parsed?.has_score) || Boolean(score && Number(score.weighted) > 0);
+
+  if (hasScore && score) {
     const db = getFirebaseDb();
     await updateDoc(doc(db, SUBMISSIONS, firestoreSubmissionId), {
       score: {
-        innovation: Number((parsed.score as Record<string, unknown>).innovation ?? 0),
-        technical: Number((parsed.score as Record<string, unknown>).technical ?? 0),
-        impact: Number((parsed.score as Record<string, unknown>).impact ?? 0),
-        presentation: Number((parsed.score as Record<string, unknown>).presentation ?? 0),
-        weighted: Number((parsed.score as Record<string, unknown>).weighted ?? 0),
-        reasoning: String((parsed.score as Record<string, unknown>).reasoning ?? ""),
+        innovation: Number(score.innovation ?? 0),
+        technical: Number(score.technical ?? 0),
+        impact: Number(score.impact ?? 0),
+        presentation: Number(score.presentation ?? 0),
+        weighted: Number(score.weighted ?? 0),
+        reasoning: String(score.reasoning ?? ""),
         evaluatedAt: serverTimestamp(),
       },
       status: "scored",
       updatedAt: serverTimestamp(),
     });
+  } else {
+    console.warn("evaluate_submission tx returned, but on-chain submission has no score yet", parsed);
   }
 
   return String(txHash);

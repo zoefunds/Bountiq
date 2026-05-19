@@ -11,6 +11,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
@@ -35,6 +36,30 @@ export interface CreateBountyResult {
   onChainBountyId: string;
   txHash: string;
 }
+
+async function readBountyCount(uid: string): Promise<number> {
+  const client = getGenLayerClient(uid);
+  const address = getContractAddress();
+  const value = await client.readContract({
+    address,
+    functionName: "get_bounty_count",
+    args: [],
+  });
+  return Number(value);
+}
+
+async function readSubmissionCount(uid: string): Promise<number> {
+  const client = getGenLayerClient(uid);
+  const address = getContractAddress();
+  const value = await client.readContract({
+    address,
+    functionName: "get_submission_count",
+    args: [],
+  });
+  return Number(value);
+}
+
+export { readBountyCount, readSubmissionCount };
 
 export async function createBountyOnChainAndMirror(
   uid: string,
@@ -64,20 +89,22 @@ export async function createBountyOnChainAndMirror(
       input.rewardAmount,
       input.rewardToken,
       input.winnerCount,
-      input.payoutSplits.map((p) => [p.rank, p.percentage]),
-      [
-        input.rubric.innovation,
-        input.rubric.technical,
-        input.rubric.impact,
-        input.rubric.presentation,
-      ],
+      input.payoutSplits.map((p) => ({ rank: p.rank, percentage: p.percentage })),
+      {
+        innovation: input.rubric.innovation,
+        technical: input.rubric.technical,
+        impact: input.rubric.impact,
+        presentation: input.rubric.presentation,
+      },
       Math.floor(input.deadline.getTime() / 1000),
     ],
     value: 0n,
   });
 
-  const receipt = await client.waitForTransactionReceipt({ hash: txHash });
-  const onChainBountyId = String(receipt?.consensus_data?.leader_receipt?.result ?? "");
+  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+
+  const newCount = await readBountyCount(uid);
+  const onChainBountyId = String(newCount);
 
   const db = getFirebaseDb();
   const docRef = await addDoc(collection(db, BOUNTIES), {
@@ -91,7 +118,8 @@ export async function createBountyOnChainAndMirror(
     rubric: input.rubric,
     status: "open",
     contractAddress: address,
-    onChainBountyId: onChainBountyId || null,
+    onChainBountyId,
+    revealed: false,
     submissionCount: 0,
     deadline: Timestamp.fromDate(input.deadline),
     createdAt: serverTimestamp(),
@@ -134,4 +162,34 @@ export async function getBountyById(firestoreId: string): Promise<Bounty | null>
   const snap = await getDoc(doc(db, BOUNTIES, firestoreId));
   if (!snap.exists()) return null;
   return { id: snap.id, ...(snap.data() as Omit<Bounty, "id">) };
+}
+
+export async function closeBountySubmissions(
+  uid: string,
+  bounty: Bounty,
+): Promise<void> {
+  if (!bounty.onChainBountyId) throw new Error("Bounty has no on-chain id");
+  const client = getGenLayerClient(uid);
+  const address = getContractAddress();
+  const txHash = await client.writeContract({
+    address,
+    functionName: "close_submissions",
+    args: [Number(bounty.onChainBountyId)],
+    value: 0n,
+  });
+  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+
+  const db = getFirebaseDb();
+  await updateDoc(doc(db, BOUNTIES, bounty.id), {
+    status: "judging",
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function revealBountySubmissions(bounty: Bounty): Promise<void> {
+  const db = getFirebaseDb();
+  await updateDoc(doc(db, BOUNTIES, bounty.id), {
+    revealed: true,
+    updatedAt: serverTimestamp(),
+  });
 }
