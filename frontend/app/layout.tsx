@@ -3,6 +3,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import "@/styles/globals.css";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/cn";
+import { AuthProvider } from "@/hooks/useAuth";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -65,7 +66,7 @@ export default function RootLayout({
           "min-h-screen bg-canvas text-ink font-sans antialiased",
         )}
       >
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
