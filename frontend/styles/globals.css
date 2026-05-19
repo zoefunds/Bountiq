@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 44 22% 92%;
+    --foreground: 0 0% 10%;
+    --muted: 44 14% 84%;
+    --muted-foreground: 0 0% 36%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --border: 0 0% 10% / 0.08;
+    --ring: 0 0% 10% / 0.18;
+    --radius: 14px;
+  }
+
+  html,
+  body {
+    background-color: #efece4;
+    color: #1a1a1a;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: #1a1a1a;
+    color: #efece4;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .bg-grain {
+    background-image:
+      radial-gradient(rgba(26, 26, 26, 0.04) 1px, transparent 1px),
+      radial-gradient(rgba(26, 26, 26, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px, 48px 48px;
+    background-position: 0 0, 12px 12px;
+  }
+  .surface {
+    background-color: #ffffff;
+    border: 1px solid rgba(26, 26, 26, 0.08);
+    box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04), 0 8px 24px rgba(26, 26, 26, 0.06);
+  }
+}
