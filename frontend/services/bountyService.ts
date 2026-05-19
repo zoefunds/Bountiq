@@ -4,6 +4,8 @@ import {
   Timestamp,
   addDoc,
   collection,
+  doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -125,4 +127,11 @@ export async function listMyBounties(uid: string, max = 50): Promise<Bounty[]> {
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Bounty, "id">) }));
+}
+
+export async function getBountyById(firestoreId: string): Promise<Bounty | null> {
+  const db = getFirebaseDb();
+  const snap = await getDoc(doc(db, BOUNTIES, firestoreId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...(snap.data() as Omit<Bounty, "id">) };
 }
