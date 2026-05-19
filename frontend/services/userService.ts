@@ -56,3 +56,11 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
   const snap = await getDoc(doc(db, USERS, uid));
   return snap.exists() ? (snap.data() as AppUser) : null;
 }
+
+export async function setUserWalletAddress(uid: string, address: string): Promise<void> {
+  const db = getFirebaseDb();
+  await updateDoc(doc(db, USERS, uid), {
+    walletAddress: address,
+    updatedAt: serverTimestamp(),
+  });
+}

@@ -12,12 +12,14 @@ import {
   type User as FirebaseUser,
 } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
-import { ensureUserDocument } from "@/services/userService";
+import { ensureUserDocument, setUserWalletAddress } from "@/services/userService";
+import { getLocalAddress } from "@/lib/genlayer";
 import type { AppUser, UserRole } from "@/types";
 
 interface AuthContextValue {
   firebaseUser: FirebaseUser | null;
   appUser: AppUser | null;
+  walletAddress: string | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -31,6 +33,7 @@ const AuthContext = React.createContext<AuthContextValue | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = React.useState<FirebaseUser | null>(null);
   const [appUser, setAppUser] = React.useState<AppUser | null>(null);
+  const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -41,12 +44,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const doc = await ensureUserDocument(user);
           setAppUser(doc);
+          const addr = getLocalAddress(user.uid);
+          setWalletAddress(addr);
+          if (doc.walletAddress !== addr) {
+            await setUserWalletAddress(user.uid, addr);
+          }
         } catch (err) {
-          console.error("ensureUserDocument failed", err);
+          console.error("auth bootstrap failed", err);
           setAppUser(null);
+          setWalletAddress(null);
         }
       } else {
         setAppUser(null);
+        setWalletAddress(null);
       }
       setLoading(false);
     });
@@ -55,8 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = React.useCallback(async () => {
     const auth = getFirebaseAuth();
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    await signInWithPopup(auth, new GoogleAuthProvider());
   }, []);
 
   const signInWithEmail = React.useCallback(async (email: string, password: string) => {
@@ -88,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextValue = {
     firebaseUser,
     appUser,
+    walletAddress,
     loading,
     signInWithGoogle,
     signInWithEmail,
