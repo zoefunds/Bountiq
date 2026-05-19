@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function currentUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && role in currentUser().roles;
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isCreator() {
+      return hasRole('creator') || isAdmin();
+    }
+
+    function isJudge() {
+      return hasRole('judge') || isAdmin();
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSelf(uid)
+        && request.resource.data.roles.hasOnly(['submitter']);
+      allow update: if isSelf(uid) && request.resource.data.roles == resource.data.roles
+        || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /bounties/{bountyId} {
+      allow read: if true;
+      allow create: if isCreator()
+        && request.resource.data.creatorUid == request.auth.uid
+        && request.resource.data.status in ['draft', 'open'];
+      allow update: if (isSignedIn()
+          && resource.data.creatorUid == request.auth.uid
+          && resource.data.status in ['draft', 'open'])
+        || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.submitterUid == request.auth.uid
+        && request.resource.data.status == 'submitted';
+      allow update: if isJudge()
+        || (isSignedIn()
+            && resource.data.submitterUid == request.auth.uid
+            && resource.data.status == 'submitted');
+      allow delete: if isAdmin();
+    }
+
+    match /audit/{eventId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn()
+        && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
