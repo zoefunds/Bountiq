@@ -21,10 +21,11 @@ export default function MySubmissionsPage() {
 
   React.useEffect(() => {
     if (!firebaseUser) return;
+    const uid = firebaseUser.uid;
     let cancelled = false;
     async function load() {
       const db = getFirebaseDb();
-      const subs = await listMySubmissions(firebaseUser.uid, 100);
+      const subs = await listMySubmissions(uid, 100);
       const out: Row[] = [];
       for (const sub of subs) {
         const bountyId = sub.bountyId;

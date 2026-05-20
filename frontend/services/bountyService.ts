@@ -16,6 +16,7 @@ import {
 } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
 import { getContractAddress, getGenLayerClient, getGenBalance } from "@/lib/genlayer";
+import { recordAudit } from "@/services/auditService";
 import type { Bounty, PayoutSplit, RubricWeights } from "@/types";
 
 const BOUNTIES = "bounties";
@@ -113,7 +114,7 @@ export async function createBountyOnChainAndMirror(
     value: 0n,
   });
 
-  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 } as any);
 
   const newCount = await readBountyCount(uid);
   const onChainBountyId = String(newCount);
@@ -136,6 +137,14 @@ export async function createBountyOnChainAndMirror(
     deadline: Timestamp.fromDate(input.deadline),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+  });
+
+  await recordAudit({
+    actorUid: uid,
+    action: "bounty.create",
+    targetType: "bounty",
+    targetId: docRef.id,
+    metadata: { onChainBountyId, txHash: String(txHash), title: input.title },
   });
 
   return {
@@ -190,7 +199,7 @@ export async function closeBountySubmissions(
     args: [Number(bounty.onChainBountyId)],
     value: 0n,
   });
-  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 } as any);
 
   const db = getFirebaseDb();
   await updateDoc(doc(db, BOUNTIES, bounty.id), {
@@ -223,7 +232,7 @@ export async function finalizeBountyWinners(
     value: 0n,
   });
   try {
-    await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+    await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 } as any);
   } catch (e) {
     console.warn("finalize_winners wait timed out, reading state anyway:", e);
   }
@@ -279,6 +288,14 @@ export async function finalizeBountyWinners(
     }
   }
 
+  await recordAudit({
+    actorUid: uid,
+    action: "bounty.finalize",
+    targetType: "bounty",
+    targetId: bounty.id,
+    metadata: { winners: winnerIds },
+  });
+
   return winnerIds;
 }
 
@@ -329,4 +346,15 @@ export async function syncBountyWinners(
   }
 
   return { winners: winnerIds, updated };
+}
+
+export async function listAllBounties(max: number = 100): Promise<Bounty[]> {
+  const db = getFirebaseDb();
+  const q = query(
+    collection(db, BOUNTIES),
+    orderBy("createdAt", "desc"),
+    limit(max),
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Bounty, "id">) }));
 }

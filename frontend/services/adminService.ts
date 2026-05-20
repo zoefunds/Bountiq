@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase";
 import { getContractAddress, getGenLayerClient } from "@/lib/genlayer";
+import { recordAudit } from "@/services/auditService";
 import type { AppUser, UserRole } from "@/types";
 
 const USERS = "users";
@@ -28,6 +29,13 @@ export async function setUserRoles(uid: string, roles: UserRole[]): Promise<void
   await updateDoc(doc(db, USERS, uid), {
     roles,
     updatedAt: serverTimestamp(),
+  });
+  await recordAudit({
+    actorUid: uid,
+    action: "user.roles.update",
+    targetType: "user",
+    targetId: uid,
+    metadata: { roles },
   });
 }
 
@@ -56,6 +64,13 @@ export async function grantCreatorOnChain(
     value: 0n,
   });
   await client.waitForTransactionReceipt({ hash: txHash });
+  await recordAudit({
+    actorUid: adminUid,
+    action: "onchain.grant_creator",
+    targetType: "user",
+    targetId: walletAddress,
+    metadata: { txHash: String(txHash) },
+  });
   return String(txHash);
 }
 
@@ -72,5 +87,12 @@ export async function revokeCreatorOnChain(
     value: 0n,
   });
   await client.waitForTransactionReceipt({ hash: txHash });
+  await recordAudit({
+    actorUid: adminUid,
+    action: "onchain.revoke_creator",
+    targetType: "user",
+    targetId: walletAddress,
+    metadata: { txHash: String(txHash) },
+  });
   return String(txHash);
 }

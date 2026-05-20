@@ -78,10 +78,17 @@ function AdminInner() {
 
   return (
     <div className="container py-12">
-      <h1 className="font-display text-4xl font-semibold tracking-tight">Admin</h1>
-      <p className="mt-2 text-sm text-ink/60">
-        Manage platform roles and on-chain creator authorization.
-      </p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-4xl font-semibold tracking-tight">Admin</h1>
+          <p className="mt-2 text-sm text-ink/60">
+            Manage platform roles and on-chain creator authorization.
+          </p>
+        </div>
+        <a href="/admin/audit" className="rounded-full border border-ink/15 bg-white px-4 py-2 text-sm font-medium text-ink hover:bg-canvas.soft">
+          Open audit log
+        </a>
+      </div>
 
       <section className="surface mt-8 rounded-3xl p-8">
         <h2 className="font-display text-xl font-semibold tracking-tight">

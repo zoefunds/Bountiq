@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import { useAuth } from "@/hooks/useAuth";
 import type { UserRole } from "@/types";
 
@@ -22,7 +23,7 @@ export function AuthGuard({
   React.useEffect(() => {
     if (loading) return;
     if (!firebaseUser) {
-      router.replace(redirectTo);
+      router.replace(redirectTo as Route);
       return;
     }
     if (requiredRoles && appUser) {

@@ -26,6 +26,7 @@ import {
   getFirebaseStorage,
 } from "@/lib/firebase";
 import { getContractAddress, getGenLayerClient, getGenBalance } from "@/lib/genlayer";
+import { recordAudit } from "@/services/auditService";
 import type { Submission } from "@/types";
 
 const SUBMISSIONS = "submissions";
@@ -90,7 +91,7 @@ export async function createSubmissionOnChainAndMirror(
     value: 0n,
   });
 
-  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+  await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 } as any);
   const countValue = await client.readContract({
     address,
     functionName: "get_submission_count",
@@ -125,6 +126,14 @@ export async function createSubmissionOnChainAndMirror(
   await updateDoc(doc(db, BOUNTIES, input.bountyFirestoreId), {
     submissionCount: increment(1),
     updatedAt: serverTimestamp(),
+  });
+
+  await recordAudit({
+    actorUid: uid,
+    action: "submission.create",
+    targetType: "submission",
+    targetId: docRef.id,
+    metadata: { bountyId: input.bountyFirestoreId, onChainSubmissionId },
   });
 
   return {
@@ -169,7 +178,7 @@ export async function triggerEvaluation(
   });
 
   try {
-    await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 });
+    await client.waitForTransactionReceipt({ hash: txHash, status: 'FINALIZED', retries: 60, interval: 5000 } as any);
   } catch (waitErr) {
     console.warn("evaluate_submission wait timed out, will read state anyway:", waitErr);
   }
@@ -260,6 +269,13 @@ export async function markSubmissionPaid(
     paidBy,
     paidTxRef,
     updatedAt: serverTimestamp(),
+  });
+  await recordAudit({
+    actorUid: paidBy,
+    action: "submission.paid",
+    targetType: "submission",
+    targetId: submissionId,
+    metadata: { paidTxRef },
   });
 }
 

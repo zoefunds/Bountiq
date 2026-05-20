@@ -98,7 +98,7 @@ export default function BountyDetailPage() {
   const completed = bounty.status === "completed";
 
   async function handleClose() {
-    if (!firebaseUser) return;
+    if (!firebaseUser || !bounty) return;
     setActionBusy(true);
     try {
       await closeBountySubmissions(firebaseUser.uid, bounty);
@@ -111,6 +111,7 @@ export default function BountyDetailPage() {
   }
 
   async function handleReveal() {
+    if (!bounty) return;
     setActionBusy(true);
     try {
       await revealBountySubmissions(bounty);
@@ -123,7 +124,7 @@ export default function BountyDetailPage() {
   }
 
   async function handleEvaluateAll() {
-    if (!firebaseUser) return;
+    if (!firebaseUser || !bounty) return;
     setActionBusy(true);
     setBulkProgress(`0 / ${unscoredCount}`);
     try {
@@ -142,7 +143,7 @@ export default function BountyDetailPage() {
   }
 
   async function handleFinalize() {
-    if (!firebaseUser) return;
+    if (!firebaseUser || !bounty) return;
     if (!confirm("Finalize winners on chain? This cannot be undone.")) return;
     setActionBusy(true);
     try {
@@ -156,7 +157,7 @@ export default function BountyDetailPage() {
   }
 
   async function handleSyncWinners() {
-    if (!firebaseUser) return;
+    if (!firebaseUser || !bounty) return;
     setActionBusy(true);
     try {
       const result = await syncBountyWinners(firebaseUser.uid, bounty);
