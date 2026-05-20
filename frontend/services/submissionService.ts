@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  getDocs,
   Timestamp,
   addDoc,
   collection,
@@ -24,7 +25,7 @@ import {
   getFirebaseDb,
   getFirebaseStorage,
 } from "@/lib/firebase";
-import { getContractAddress, getGenLayerClient } from "@/lib/genlayer";
+import { getContractAddress, getGenLayerClient, getGenBalance } from "@/lib/genlayer";
 import type { Submission } from "@/types";
 
 const SUBMISSIONS = "submissions";
@@ -43,6 +44,16 @@ export interface CreateSubmissionResult {
   firestoreId: string;
   onChainSubmissionId: string;
   txHash: string;
+}
+
+
+async function assertHasBalance(uid: string): Promise<void> {
+  const bal = await getGenBalance(uid);
+  if (bal === 0n) {
+    throw new Error(
+      "Your wallet has 0 GEN. Fund it from the GenLayer Studio faucet before submitting a transaction.",
+    );
+  }
 }
 
 export async function uploadSubmissionFile(
@@ -67,6 +78,8 @@ export async function createSubmissionOnChainAndMirror(
     contentUrl = await uploadSubmissionFile(uid, input.bountyOnChainId, input.file);
   }
 
+  await assertHasBalance(uid);
+
   const client = getGenLayerClient(uid);
   const address = getContractAddress();
 
@@ -85,11 +98,14 @@ export async function createSubmissionOnChainAndMirror(
   });
   const onChainSubmissionId = String(Number(countValue));
 
+  const submitterWallet = (client?.account?.address || "") as string;
+
   const db = getFirebaseDb();
   const docRef = await addDoc(collection(db, SUBMISSIONS), {
     bountyId: input.bountyFirestoreId,
     bountyOnChainId: input.bountyOnChainId,
     submitterUid: uid,
+    submitterWallet,
     title: input.title,
     summary: input.summary,
     contentUrl,
@@ -98,6 +114,9 @@ export async function createSubmissionOnChainAndMirror(
     score: null,
     rank: null,
     isWinner: false,
+    paidAt: null,
+    paidBy: null,
+    paidTxRef: null,
     onChainSubmissionId: onChainSubmissionId || null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -138,6 +157,7 @@ export async function triggerEvaluation(
   onChainSubmissionId: number,
   firestoreSubmissionId: string,
 ): Promise<string> {
+  await assertHasBalance(uid);
   const client = getGenLayerClient(uid);
   const address = getContractAddress();
 
@@ -198,4 +218,72 @@ export async function getSubmission(firestoreId: string): Promise<Submission | n
   const snap = await getDoc(doc(db, SUBMISSIONS, firestoreId));
   if (!snap.exists()) return null;
   return { id: snap.id, ...(snap.data() as Omit<Submission, "id">) };
+}
+
+export async function evaluateAllUnscored(
+  uid: string,
+  submissions: Submission[],
+  onProgress?: (done: number, total: number, currentId: string) => void,
+): Promise<{ ok: number; failed: number }> {
+  const targets = submissions.filter((s) => !s.score);
+  let ok = 0;
+  let failed = 0;
+  for (let i = 0; i < targets.length; i++) {
+    const sub = targets[i];
+    if (!sub) continue;
+    onProgress?.(i, targets.length, sub.id);
+    const onChainId = (sub as unknown as { onChainSubmissionId?: string }).onChainSubmissionId;
+    if (!onChainId) {
+      failed++;
+      continue;
+    }
+    try {
+      await triggerEvaluation(uid, Number(onChainId), sub.id);
+      ok++;
+    } catch (err) {
+      console.error("evaluateAllUnscored: submission " + sub.id + " failed", err);
+      failed++;
+    }
+  }
+  onProgress?.(targets.length, targets.length, "");
+  return { ok, failed };
+}
+
+export async function markSubmissionPaid(
+  submissionId: string,
+  paidBy: string,
+  paidTxRef: string,
+): Promise<void> {
+  const db = getFirebaseDb();
+  await updateDoc(doc(db, SUBMISSIONS, submissionId), {
+    paidAt: serverTimestamp(),
+    paidBy,
+    paidTxRef,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function unmarkSubmissionPaid(submissionId: string): Promise<void> {
+  const db = getFirebaseDb();
+  await updateDoc(doc(db, SUBMISSIONS, submissionId), {
+    paidAt: null,
+    paidBy: null,
+    paidTxRef: null,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function listMySubmissions(
+  uid: string,
+  max: number = 100,
+): Promise<Submission[]> {
+  const db = getFirebaseDb();
+  const q = query(
+    collection(db, SUBMISSIONS),
+    where("submitterUid", "==", uid),
+    orderBy("createdAt", "desc"),
+    limit(max),
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Submission, "id">) }));
 }

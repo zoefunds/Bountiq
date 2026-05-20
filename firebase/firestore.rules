@@ -69,6 +69,8 @@ service cloud.firestore {
         && request.resource.data.submitterUid == request.auth.uid
         && request.resource.data.status == 'submitted';
       allow update: if isJudge()
+        || isAdmin()
+        || bountyData(resource.data.bountyId).creatorUid == request.auth.uid
         || (isSignedIn()
             && resource.data.submitterUid == request.auth.uid
             && resource.data.status == 'submitted');

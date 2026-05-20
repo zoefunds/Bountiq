@@ -43,6 +43,8 @@ export interface Bounty {
   onChainBountyId: string | null;
   revealed: boolean;
   submissionCount: number;
+  winners: number[];
+  finalizedAt: Timestamp | null;
   deadline: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -78,6 +80,9 @@ export interface Submission {
   score: SubmissionScore | null;
   rank: number | null;
   isWinner: boolean;
+  paidAt: Timestamp | null;
+  paidBy: string | null;
+  paidTxRef: string | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

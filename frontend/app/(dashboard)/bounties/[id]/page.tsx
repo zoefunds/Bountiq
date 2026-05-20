@@ -5,12 +5,18 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { SubmissionForm } from "@/components/submission/SubmissionForm";
 import { SubmissionRow } from "@/components/submission/SubmissionRow";
+import { PayoutTracker } from "@/components/bounty/PayoutTracker";
 import {
   closeBountySubmissions,
+  finalizeBountyWinners,
   getBountyById,
   revealBountySubmissions,
+  syncBountyWinners,
 } from "@/services/bountyService";
-import { subscribeToBountySubmissions } from "@/services/submissionService";
+import {
+  evaluateAllUnscored,
+  subscribeToBountySubmissions,
+} from "@/services/submissionService";
 import { useAuth } from "@/hooks/useAuth";
 import type { Bounty, Submission } from "@/types";
 
@@ -24,13 +30,14 @@ function fmt(d: Date) {
 export default function BountyDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
-  const { firebaseUser, appUser, hasRole } = useAuth();
+  const { firebaseUser, hasRole, walletAddress } = useAuth();
 
   const [bounty, setBounty] = React.useState<Bounty | null>(null);
   const [submissions, setSubmissions] = React.useState<Submission[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [actionBusy, setActionBusy] = React.useState(false);
+  const [bulkProgress, setBulkProgress] = React.useState<string | null>(null);
 
   const refreshBounty = React.useCallback(async () => {
     if (!id) return;
@@ -76,6 +83,7 @@ export default function BountyDetailPage() {
     (bounty.deadline as unknown as { toDate: () => Date })?.toDate?.() ?? new Date();
   const isCreator = firebaseUser?.uid === bounty.creatorUid;
   const isPrivileged = isCreator || hasRole("judge") || hasRole("admin");
+  const canManagePayouts = isCreator || hasRole("admin");
   const myUid = firebaseUser?.uid;
 
   const visible = isPrivileged || bounty.revealed
@@ -85,6 +93,9 @@ export default function BountyDetailPage() {
   const ranked = [...visible].sort(
     (a, b) => (b.score?.weighted ?? 0) - (a.score?.weighted ?? 0),
   );
+
+  const unscoredCount = submissions.filter((s) => !s.score).length;
+  const completed = bounty.status === "completed";
 
   async function handleClose() {
     if (!firebaseUser) return;
@@ -106,6 +117,53 @@ export default function BountyDetailPage() {
       await refreshBounty();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Reveal failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleEvaluateAll() {
+    if (!firebaseUser) return;
+    setActionBusy(true);
+    setBulkProgress(`0 / ${unscoredCount}`);
+    try {
+      const result = await evaluateAllUnscored(
+        firebaseUser.uid,
+        submissions,
+        (done, total) => setBulkProgress(`${done} / ${total}`),
+      );
+      setBulkProgress(`Done. ${result.ok} ok, ${result.failed} failed.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk eval failed");
+    } finally {
+      setActionBusy(false);
+      setTimeout(() => setBulkProgress(null), 4000);
+    }
+  }
+
+  async function handleFinalize() {
+    if (!firebaseUser) return;
+    if (!confirm("Finalize winners on chain? This cannot be undone.")) return;
+    setActionBusy(true);
+    try {
+      await finalizeBountyWinners(firebaseUser.uid, bounty);
+      await refreshBounty();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Finalize failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleSyncWinners() {
+    if (!firebaseUser) return;
+    setActionBusy(true);
+    try {
+      const result = await syncBountyWinners(firebaseUser.uid, bounty);
+      await refreshBounty();
+      alert("Synced. Winners on chain: " + result.winners.join(", ") + ". Updated " + result.updated + " submissions.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed");
     } finally {
       setActionBusy(false);
     }
@@ -135,20 +193,41 @@ export default function BountyDetailPage() {
                 )}
               </div>
               {isCreator || hasRole("admin") ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {bounty.status === "open" ? (
                     <Button size="sm" variant="outline" onClick={handleClose} loading={actionBusy}>
                       Close submissions
                     </Button>
                   ) : null}
                   {!bounty.revealed ? (
-                    <Button size="sm" onClick={handleReveal} loading={actionBusy}>
+                    <Button size="sm" variant="outline" onClick={handleReveal} loading={actionBusy}>
                       Reveal submissions
                     </Button>
                   ) : null}
+                  {!completed && unscoredCount > 0 ? (
+                    <Button size="sm" variant="outline" onClick={handleEvaluateAll} loading={actionBusy}>
+                      Evaluate all unscored
+                    </Button>
+                  ) : null}
+                  {!completed ? (
+                    <Button size="sm" onClick={handleFinalize} loading={actionBusy}>
+                      Finalize winners
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={handleSyncWinners} loading={actionBusy}>
+                      Sync winners
+                    </Button>
+                  )}
                 </div>
               ) : null}
             </div>
+
+            {bulkProgress ? (
+              <div className="mt-4 rounded-xl border border-ink/10 bg-canvas.soft px-4 py-2 text-xs text-ink/65">
+                Bulk evaluation: {bulkProgress}
+              </div>
+            ) : null}
+
             <h1 className="mt-4 font-display text-4xl font-semibold tracking-tight">
               {bounty.title}
             </h1>
@@ -168,7 +247,7 @@ export default function BountyDetailPage() {
                 Submissions
               </h2>
               <span className="text-xs text-ink/45">
-                {bounty.submissionCount} total
+                {submissions.length} total · {unscoredCount} unscored
               </span>
             </div>
 
@@ -220,7 +299,16 @@ export default function BountyDetailPage() {
             </ul>
           </div>
 
-          {bounty.status === "open" ? <SubmissionForm bounty={bounty} /> : null}
+          {completed ? (
+            <PayoutTracker
+              bounty={bounty}
+              submissions={submissions}
+              canManage={canManagePayouts}
+              paidBy={walletAddress || firebaseUser?.uid || ""}
+            />
+          ) : bounty.status === "open" ? (
+            <SubmissionForm bounty={bounty} />
+          ) : null}
         </aside>
       </div>
     </div>

@@ -60,3 +60,24 @@ export function getContractAddress(): Hex {
 export function getLocalAddress(uid: string): Hex {
   return getOrCreateLocalAccount(uid).address as Hex;
 }
+
+export async function getGenBalance(uid: string): Promise<bigint> {
+  const client = getGenLayerClient(uid);
+  const account = getOrCreateLocalAccount(uid);
+  try {
+    const bal = await client.getBalance({ address: account.address });
+    return BigInt(bal as unknown as string | number | bigint);
+  } catch (e) {
+    console.warn("getGenBalance failed:", e);
+    return 0n;
+  }
+}
+
+export function formatGen(value: bigint, decimals: number = 18, maxFractionDigits: number = 4): string {
+  const base = 10n ** BigInt(decimals);
+  const whole = value / base;
+  const fraction = value % base;
+  if (fraction === 0n) return whole.toString();
+  let frac = fraction.toString().padStart(decimals, "0").slice(0, maxFractionDigits).replace(/0+$/, "");
+  return frac ? `${whole.toString()}.${frac}` : whole.toString();
+}

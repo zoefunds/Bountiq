@@ -24,6 +24,7 @@ export function Navbar() {
           <Link href="/bounties" className="transition hover:text-ink">Bounties</Link>
           <Link href="/submissions" className="transition hover:text-ink">Submissions</Link>
           <Link href="/judge" className="transition hover:text-ink">Judging</Link>
+          <Link href="/profile" className="transition hover:text-ink">Profile</Link>
           {hasRole("admin") ? (
             <Link href="/admin" className="transition hover:text-ink">Admin</Link>
           ) : null}
