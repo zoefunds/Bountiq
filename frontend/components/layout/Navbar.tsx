@@ -11,11 +11,8 @@ export function Navbar() {
   return (
     <header className="relative z-20 border-b border-ink/5 bg-canvas/80 backdrop-blur">
       <div className="container flex h-20 items-center justify-between">
-        <Link href="/" className="flex items-center gap-3">
-          <img src="/boun.svg" alt={siteConfig.name} className="h-9 w-9 rounded-xl object-contain" />
-          <span className="font-display text-lg font-semibold tracking-tight">
-            {siteConfig.name}
-          </span>
+        <Link href="/" className="flex items-center">
+          <img src="/boun.svg" alt={siteConfig.name} className="h-7 w-auto object-contain" />
         </Link>
 
         <nav className="hidden items-center gap-8 text-sm text-ink/70 md:flex">
