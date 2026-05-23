@@ -12,9 +12,7 @@ export function Navbar() {
     <header className="relative z-20 border-b border-ink/5 bg-canvas/80 backdrop-blur">
       <div className="container flex h-20 items-center justify-between">
         <Link href="/" className="flex items-center gap-3">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink text-canvas font-display text-sm font-semibold">
-            Bq
-          </span>
+          <img src="/boun.svg" alt={siteConfig.name} className="h-9 w-9 rounded-xl object-contain" />
           <span className="font-display text-lg font-semibold tracking-tight">
             {siteConfig.name}
           </span>
