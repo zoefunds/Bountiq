@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 import { siteConfig } from "@/config/site";
 
 const fadeUp: Variants = {
@@ -98,12 +99,7 @@ export default function HomePage() {
         </motion.div>
       </section>
 
-      <footer className="relative z-10 border-t border-ink/10">
-        <div className="container flex h-16 items-center justify-between text-xs text-ink/50">
-          <span>© {new Date().getFullYear()} {siteConfig.name}</span>
-          <span className="font-mono uppercase tracking-widest">StudioNet ready</span>
-        </div>
-      </footer>
+      <Footer />
     </main>
   );
 }
