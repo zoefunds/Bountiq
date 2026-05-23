@@ -42,6 +42,10 @@ service cloud.firestore {
       allow update: if (isSelf(uid) && request.resource.data.roles == resource.data.roles)
         || isAdmin();
       allow delete: if isAdmin();
+
+      match /secrets/{secretId} {
+        allow read, write: if isSelf(uid);
+      }
     }
 
     match /bounties/{bountyId} {

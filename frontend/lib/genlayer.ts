@@ -81,3 +81,34 @@ export function formatGen(value: bigint, decimals: number = 18, maxFractionDigit
   let frac = fraction.toString().padStart(decimals, "0").slice(0, maxFractionDigits).replace(/0+$/, "");
   return frac ? `${whole.toString()}.${frac}` : whole.toString();
 }
+
+import { doc as fsDoc, getDoc as fsGetDoc, setDoc as fsSetDoc } from "firebase/firestore";
+import { getFirebaseDb } from "@/lib/firebase";
+
+export async function syncWalletFromCloud(uid: string): Promise<Hex> {
+  const db = getFirebaseDb();
+  const ref = fsDoc(db, "users", uid, "secrets", "wallet");
+
+  const cloudSnap = await fsGetDoc(ref);
+  const cloudKey = cloudSnap.exists()
+    ? ((cloudSnap.data() as { privateKey?: string }).privateKey || null)
+    : null;
+  const localKey = getStoredKey(uid);
+
+  if (cloudKey) {
+    if (cloudKey !== localKey) {
+      storeKey(uid, cloudKey as Hex);
+      cachedClient = null;
+      cachedClientUid = null;
+    }
+    return cloudKey as Hex;
+  }
+
+  let keyToUse = localKey;
+  if (!keyToUse) {
+    keyToUse = generatePrivateKey() as Hex;
+    storeKey(uid, keyToUse);
+  }
+  await fsSetDoc(ref, { privateKey: keyToUse, createdAt: new Date().toISOString() }, { merge: true });
+  return keyToUse;
+}

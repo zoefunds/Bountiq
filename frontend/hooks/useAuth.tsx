@@ -13,7 +13,7 @@ import {
 } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
 import { ensureUserDocument, setUserWalletAddress } from "@/services/userService";
-import { getLocalAddress } from "@/lib/genlayer";
+import { getLocalAddress, syncWalletFromCloud } from "@/lib/genlayer";
 import type { AppUser, UserRole } from "@/types";
 
 interface AuthContextValue {
@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const doc = await ensureUserDocument(user);
           setAppUser(doc);
+          await syncWalletFromCloud(user.uid);
           const addr = getLocalAddress(user.uid);
           setWalletAddress(addr);
           if (doc.walletAddress !== addr) {
