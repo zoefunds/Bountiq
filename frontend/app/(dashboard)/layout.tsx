@@ -1,5 +1,6 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { AuthGuard } from "@/components/auth/AuthGuard";
+import { WalletUnlockModal } from "@/components/wallet/WalletUnlockModal";
 
 export default function DashboardLayout({
   children,
@@ -9,7 +10,10 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-canvas">
       <Navbar />
-      <AuthGuard>{children}</AuthGuard>
+      <AuthGuard>
+        {children}
+        <WalletUnlockModal />
+      </AuthGuard>
     </div>
   );
 }
